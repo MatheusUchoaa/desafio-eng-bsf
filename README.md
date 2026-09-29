@@ -1,3 +1,5 @@
+![CI](https://github.com/MatheusUchoaa/desafio-eng-bsf/actions/workflows/ci.yml/badge.svg)
+
 # Pipeline Silver dirigida por Data Contract
 
 Ingestão Bronze → Silver de uma plataforma de pagamentos, onde **uma engine
@@ -37,11 +39,24 @@ declaradas → cast de tipo → **regras hard** (PK nula / `nullable:false` → 
 
 ### Databricks (via Asset Bundle — caminho principal)
 
-Pré-requisitos: Databricks CLI configurada, um Volume com os 3 arquivos Bronze e
-permissão de escrita no schema Silver. Ajuste `host` em `databricks.yml` e as
-variáveis `silver_schema` / `bronze_volume` (ou sobrescreva com `--var`).
+Pré-requisitos: Databricks CLI instalada e permissão de escrita no schema Silver.
+Os defaults das variáveis são genéricos (`main.silver` e `/Volumes/main/bronze/payments`):
+ajuste `silver_schema` / `bronze_volume` em `databricks.yml` para o seu catálogo (ou
+sobrescreva com `--var`), e o `host` dos targets para o seu workspace.
 
 ```bash
+# 1. autenticar (ou usar um profile existente via DATABRICKS_CONFIG_PROFILE)
+databricks auth login --host <seu-workspace>
+
+# 2. criar schemas + volume e subir os 3 arquivos Bronze (nomes exatos)
+#    SQL: CREATE SCHEMA IF NOT EXISTS <catalog>.bronze;
+#         CREATE SCHEMA IF NOT EXISTS <catalog>.silver;
+#         CREATE VOLUME IF NOT EXISTS <catalog>.bronze.payments;
+databricks fs cp data/bronze/transactions.json dbfs:/Volumes/<catalog>/bronze/payments/transactions.json
+databricks fs cp data/bronze/customers.csv     dbfs:/Volumes/<catalog>/bronze/payments/customers.csv
+databricks fs cp data/bronze/fraud_flags.json  dbfs:/Volumes/<catalog>/bronze/payments/fraud_flags.json
+
+# 3. validar, implantar e rodar
 databricks bundle validate
 databricks bundle deploy -t dev          # builda a wheel e sobe o job
 databricks bundle run silver_pipeline -t dev
