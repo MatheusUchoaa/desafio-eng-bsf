@@ -1,0 +1,63 @@
+version: "1.0"
+name: "transactions_silver"
+description: >
+  Transações de pagamento da camada Silver. Origem: API simulada como JSON
+  linha-a-linha. Trata amount vindo como string/número, timestamps em dois
+  formatos e colisão de transaction_id.
+
+source:
+  format: json
+  path: "data/bronze/transactions.json"
+
+primary_key: [transaction_id]
+
+# Partição por data da transação: escala natural por volume diário/mensal,
+# permite pruning em consultas por período (o filtro mais comum em pagamentos).
+partition_by: [transaction_date_ref]
+
+# transaction_id é a chave real. A fonte tem '...440001' duplicado com clientes
+# diferentes (colisão). keep=last por data mantém o evento mais recente e torna
+# a carga idempotente em reprocessamento.
+dedup:
+  keys: [transaction_id]
+  order_by: transaction_date
+  keep: last
+
+columns:
+  - name: transaction_id
+    type: string
+    nullable: false          # PK -> linha com id nulo vai para quarentena
+    description: "Identificador único da transação (UUID)."
+
+  - name: customer_id
+    type: long
+    nullable: false
+    description: "FK para customers_silver.customer_id."
+
+  - name: transaction_amount
+    type: "decimal(18,2)"
+    nullable: false          # amount não-parseável ('INVALIDO') -> null -> quarentena
+    description: "Valor da transação em BRL."
+    transform: clean_numeric
+    rules:
+      min: 0                 # valor negativo é anômalo; on_fail=warn só sinaliza
+      on_fail: warn
+
+  - name: transaction_date
+    type: timestamp
+    nullable: false
+    description: "Timestamp da transação (UTC)."
+    transform: parse_timestamp
+    formats:
+      - "yyyy-MM-dd'T'HH:mm:ssX"   # 2024-01-15T10:30:00Z
+      - "yyyy-MM-dd HH:mm:ss"      # 2024-01-15 15:10:00
+
+  - name: payment_method
+    type: string
+    nullable: true           # linha 005 vem nula; método é opcional
+    description: "Meio de pagamento (credit_card, pix, debit_card, transfer)."
+
+derived:
+  - name: transaction_date_ref
+    from: transaction_date
+    expr: to_date

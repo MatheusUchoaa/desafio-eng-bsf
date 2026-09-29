@@ -1,0 +1,40 @@
+# Databricks Asset Bundle — deploy reproduzível da pipeline Silver.
+#   databricks bundle validate
+#   databricks bundle deploy -t dev
+#   databricks bundle run silver_pipeline -t dev
+#
+# O código + os contratos são empacotados numa wheel (artifacts abaixo) e
+# instalados no cluster do job; a task é um python_wheel_task. Os contratos
+# viajam DENTRO da wheel, então não há arquivos soltos para sincronizar.
+
+bundle:
+  name: silver-contract-pipeline
+
+include:
+  - resources/*.yml
+
+variables:
+  silver_schema:
+    description: "Schema de destino no Unity Catalog (catalog.schema)"
+    default: main.silver
+  bronze_volume:
+    description: "Volume com os 3 arquivos Bronze"
+    default: /Volumes/main/bronze/payments
+
+artifacts:
+  silver_wheel:
+    type: whl
+    build: python -m build --wheel
+    path: .
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      # ajuste para o seu workspace (a CLI também pode usar o profile -p)
+      host: https://adb-926216925051160.0.azuredatabricks.net
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-926216925051160.0.azuredatabricks.net

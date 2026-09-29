@@ -1,0 +1,15 @@
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440001", "customer_id": 1001, "transaction_amount": "1250.50", "transaction_date": "2024-01-15T10:30:00Z", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440002", "customer_id": 1002, "transaction_amount": 850.00, "transaction_date": "2024-01-15T11:45:30Z", "payment_method": "pix"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440003", "customer_id": 1001, "transaction_amount": "2100.75", "transaction_date": "2024-01-15T14:22:00Z", "payment_method": "debit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440004", "customer_id": 1003, "transaction_amount": "500", "transaction_date": "2024-01-15 15:10:00", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440005", "customer_id": 1002, "transaction_amount": "45.99", "transaction_date": "2024-01-16T09:00:00Z", "payment_method": null}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440006", "customer_id": 1004, "transaction_amount": "15000", "transaction_date": "2024-01-16T16:30:45Z", "payment_method": "transfer"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440007", "customer_id": 1005, "transaction_amount": "INVALIDO", "transaction_date": "2024-01-16T17:00:00Z", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440001", "customer_id": 1006, "transaction_amount": 3500.00, "transaction_date": "2024-01-17T08:15:00Z", "payment_method": "pix"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440008", "customer_id": 1007, "transaction_amount": 750.25, "transaction_date": "2024-01-17T10:45:00Z", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440009", "customer_id": 1003, "transaction_amount": 2200.00, "transaction_date": "2024-01-17T13:30:00Z", "payment_method": "debit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440010", "customer_id": 1008, "transaction_amount": 1850.50, "transaction_date": "2024-01-18T11:20:00Z", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440011", "customer_id": 1002, "transaction_amount": 5500.00, "transaction_date": "2024-01-18T14:45:00Z", "payment_method": "transfer"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440012", "customer_id": 1009, "transaction_amount": 320.75, "transaction_date": "2024-01-18T16:00:00Z", "payment_method": "pix"}
+{"transaction_id": null, "customer_id": 1010, "transaction_amount": 1100.00, "transaction_date": "2024-01-19T09:30:00Z", "payment_method": "credit_card"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440013", "customer_id": 1001, "transaction_amount": 2750.00, "transaction_date": "2025-03-15T10:00:00Z", "payment_method": "credit_card"}

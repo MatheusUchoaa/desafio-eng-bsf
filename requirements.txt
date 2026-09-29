@@ -1,0 +1,5 @@
+# Dev/local. No cluster Databricks, pyspark/delta são nativos — instale só o pacote:
+#   pip install .            (traz apenas pydantic + PyYAML)
+# Para desenvolver e testar localmente:
+#   pip install -e ".[dev]"
+-e .[dev]

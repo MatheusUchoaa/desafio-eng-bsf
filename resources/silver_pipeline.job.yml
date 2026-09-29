@@ -1,0 +1,26 @@
+resources:
+  jobs:
+    silver_pipeline:
+      name: "[${bundle.target}] payments-silver-contract"
+      tasks:
+        - task_key: build_silver
+          python_wheel_task:
+            package_name: silver_pipeline
+            entry_point: silver-pipeline      # console_scripts do pyproject
+            parameters:
+              # contratos vêm embutidos na wheel; só apontamos destino e fonte
+              - "--output"
+              - "${var.silver_schema}"
+              - "--source-base"
+              - "${var.bronze_volume}"
+          libraries:
+            - whl: ../dist/*.whl              # wheel construída pelo artifact
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 1
+            data_security_mode: SINGLE_USER   # exigido p/ Unity Catalog
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"  # diário 06:00
+        timezone_id: America/Manaus
+        pause_status: PAUSED

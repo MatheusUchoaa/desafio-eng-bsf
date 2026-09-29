@@ -1,0 +1,70 @@
+version: "1.0"
+name: "customers_silver"
+description: >
+  Cadastro de clientes da camada Silver. Origem: CSV de sistema legado.
+  Trata CPF sem máscara e com dígito inválido, e-mail malformado/duplicado
+  e campos nulos, SEM descartar clientes legítimos.
+
+source:
+  format: csv
+  path: "data/bronze/customers.csv"
+  options:
+    header: true
+
+primary_key: [customer_id]
+
+# Partição por mês de cadastro: cardinalidade baixa e estável, útil para
+# análises de coorte de aquisição.
+partition_by: [registration_month]
+
+# customer_id é a chave da entidade. Deduplica por id (NÃO por e-mail), para
+# não perder um cliente legítimo quando dois compartilham o mesmo e-mail.
+dedup:
+  keys: [customer_id]
+  order_by: registration_date
+  keep: last
+
+columns:
+  - name: customer_id
+    type: long
+    nullable: false
+    description: "Identificador único do cliente."
+
+  - name: customer_name
+    type: string
+    nullable: false
+    description: "Nome do cliente."
+
+  - name: customer_email
+    type: string
+    nullable: true
+    description: "E-mail do cliente. Mantém o valor bruto; problemas vão para _dq_flags."
+    rules:
+      # 1007 'roberto@email' é malformado; 1001 x 1006 compartilham e-mail.
+      # Política: NÃO perder contato do cliente -> só sinaliza (warn), não anula
+      # nem descarta. O consumo (Gold) filtra por _dq_flags se precisar.
+      valid_email: true
+      unique: true
+      on_fail: warn
+
+  - name: customer_cpf
+    type: string
+    nullable: true
+    description: "CPF em 11 dígitos, sem máscara. Dígito verificador inválido vira null."
+    transform: normalize_cpf
+    rules:
+      # 100% dos CPFs do arquivo reprovam o dígito verificador (dados fake).
+      # on_fail=quarantine descartaria toda a base; CPF inválido é inútil como
+      # identificador -> anula o valor e marca em _dq_flags, mantendo o cliente.
+      valid_cpf: true
+      on_fail: nullify
+
+  - name: registration_date
+    type: date
+    nullable: false
+    description: "Data de cadastro do cliente."
+
+derived:
+  - name: registration_month
+    from: registration_date
+    expr: to_date

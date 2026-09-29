@@ -1,0 +1,51 @@
+version: "1.0"
+name: "fraud_flags_silver"
+description: >
+  Sinais de fraude por transação, da camada Silver. Origem: JSON de serviço
+  externo, esparso. Normaliza fraud_score que vem em escalas diferentes
+  (float 0-1 e categórico textual como 'MEDIUM').
+
+source:
+  format: json
+  path: "data/bronze/fraud_flags.json"
+
+primary_key: [transaction_id]
+
+# Sem partição: volume pequeno e sempre consumido via join por transaction_id.
+partition_by: []
+
+dedup:
+  keys: [transaction_id]
+  order_by: transaction_id
+  keep: last
+
+columns:
+  - name: transaction_id
+    type: string
+    nullable: false
+    description: "FK/PK para transactions_silver.transaction_id."
+
+  - name: fraud_score
+    type: double
+    nullable: true
+    description: "Score de fraude normalizado em [0,1]."
+    transform: normalize_score
+    # Resolve 'scores em escalas diferentes': categórico textual -> numérico.
+    score_map:
+      LOW: 0.1
+      MEDIUM: 0.5
+      HIGH: 0.9
+    rules:
+      min: 0
+      max: 1
+      on_fail: warn
+
+  - name: fraud_flag
+    type: boolean
+    nullable: true
+    description: "Marcação booleana de fraude."
+
+  - name: fraud_reason
+    type: string
+    nullable: true          # esparso; muitos nulos são esperados
+    description: "Motivo textual da marcação de fraude, quando houver."

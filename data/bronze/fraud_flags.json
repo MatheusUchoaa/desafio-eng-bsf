@@ -1,0 +1,11 @@
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440001", "fraud_score": 0.15, "fraud_flag": false, "fraud_reason": "normal_transaction"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440002", "fraud_score": 0.05, "fraud_flag": false, "fraud_reason": null}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440003", "fraud_score": 0.82, "fraud_flag": true, "fraud_reason": "high_amount_suspicious_location"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440004", "fraud_score": "MEDIUM", "fraud_flag": false, "fraud_reason": "velocity_check_passed"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440005", "fraud_score": 0.23, "fraud_flag": false, "fraud_reason": null}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440006", "fraud_score": 0.95, "fraud_flag": true, "fraud_reason": "international_transaction_high_risk"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440008", "fraud_score": 0.12, "fraud_flag": false, "fraud_reason": null}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440009", "fraud_score": 0.45, "fraud_flag": false, "fraud_reason": "manual_review_passed"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440010", "fraud_score": 0.88, "fraud_flag": true, "fraud_reason": "duplicate_transaction_detected"}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440011", "fraud_score": 0.34, "fraud_flag": false, "fraud_reason": null}
+{"transaction_id": "550e8400-e29b-41d4-a716-446655440012", "fraud_score": 0.11, "fraud_flag": false, "fraud_reason": "regular_customer"}
