@@ -20,6 +20,12 @@ variables:
   bronze_volume:
     description: "Volume com os 3 arquivos Bronze"
     default: /Volumes/main/bronze/payments
+  silver_catalog:
+    description: "Catálogo do pipeline declarativo (resources/silver_pipeline.pipeline.yml)"
+    default: main
+  silver_dlt_schema:
+    description: "Schema de destino do pipeline declarativo, separado das tabelas do job"
+    default: silver_dlt
 
 artifacts:
   silver_wheel:

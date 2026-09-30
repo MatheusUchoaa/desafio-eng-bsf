@@ -67,11 +67,56 @@ e roda o entry point `silver-pipeline` com `--output ${silver_schema}` e
 `--source-base ${bronze_volume}`. Saída: tabelas gerenciadas **Delta** no Unity
 Catalog `⟨schema⟩.transactions_silver` (+ `_quarantine`), idem customers e fraud.
 
+### Databricks (Spark Declarative Pipeline / DLT — caminho declarativo paralelo)
+
+Item 6 do desafio. É um **segundo caminho**, paralelo ao job acima (engine
+imperativa): o mesmo contrato YAML e as mesmas etapas da engine, mas orquestrados
+por um **Spark Declarative Pipeline (Lakeflow Spark Declarative Pipelines, o nome atual
+do DLT)**. Nenhuma regra é reescrita à mão: o contrato continua sendo a única fonte de
+verdade.
+
+> **Por que não há `import dlt`:** o código usa a API atual, `from pyspark import
+> pipelines as dp`, que a Databricks recomenda no lugar do módulo `dlt` (ainda
+> suportado, mas legado). Os decorators são os equivalentes diretos:
+> `@dp.materialized_view` / `@dp.temporary_view` (antes `@dlt.table` / `@dlt.view`),
+> `@dp.expect_all_or_drop` e `@dp.expect_all`.
+
+`src/silver_pipeline/dlt_pipeline.py` gera, para cada contrato embutido:
+
+| Dataset | Tipo | O que faz |
+|---|---|---|
+| `<nome>_bronze` | view | lê a fonte do contrato (formato/opções) no `bronze_volume` |
+| `<nome>_typed` | view | `engine.prepare` (transform + cast); PK e `nullable:false` viram `@dp.expect_all_or_drop` |
+| `<nome>` | materialized view | `engine.refine` (dedup + regras soft + derivadas, particionada como no contrato); regras soft viram `@dp.expect_all` (warn) sobre `_dq_flags` |
+| `<nome>_quarantine` | materialized view | linhas rejeitadas com `_quarantine_reason`, igual à quarentena do job |
+
+As expectations são geradas a partir do contrato (`hard_expectations` /
+`soft_expectations` em `engine.py`), então as métricas de qualidade e a linhagem
+Bronze → Silver aparecem no grafo do pipeline.
+
+Publica em `<silver_catalog>.<silver_dlt_schema>` (default `main.silver_dlt`), um
+schema **separado** das tabelas do job: um pipeline não publica sobre tabelas que ele
+não gerencia. Pré-requisito, além do Volume Bronze da seção anterior:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS <catalog>.silver_dlt;
+```
+
+```bash
+databricks bundle deploy -t dev --var="silver_catalog=<catalog>" \
+  --var="bronze_volume=/Volumes/<catalog>/bronze/payments"   # sobe job + pipeline
+databricks bundle run silver_dlt -t dev --var="silver_catalog=<catalog>" \
+  --var="bronze_volume=/Volumes/<catalog>/bronze/payments"   # roda o pipeline
+```
+
+O pipeline é serverless e instala a mesma wheel do job (`environment.dependencies`),
+então engine e contratos vêm do mesmo artefato versionado.
+
 ### Local (Spark + Java 17)
 
 ```bash
 pip install -e ".[dev]"                   # pacote + pyspark/delta/pytest/ruff
-pytest -q                                 # 31 testes (funções puras + engine)
+pytest -q                                 # 32 testes (funções puras + engine)
 silver-pipeline                           # usa contratos embutidos, grava data/silver/*
 # ou: python -m silver_pipeline.pipeline --output data/silver
 ```
@@ -149,6 +194,8 @@ cases exigidos (pula se pyspark ausente) + detecção de destino. `ruff` no lint
 - **CI/CD** — `.github/workflows/ci.yml`: lint (ruff) + pytest + **build da wheel** a cada PR.
 - **Databricks Asset Bundle** — `databricks.yml` + `resources/silver_pipeline.job.yml`:
   wheel como artifact, `python_wheel_task`, cluster UC, schedule; deploy reproduzível.
+- **Spark Declarative Pipeline (DLT)** — `resources/silver_pipeline.pipeline.yml` +
+  `src/silver_pipeline/dlt_pipeline.py`: os mesmos contratos viram expectations.
 
 ## Próximos passos para escala
 
@@ -157,5 +204,5 @@ cases exigidos (pula se pyspark ausente) + detecção de destino. `ruff` no lint
 2. **`pandas_udf`/expressão nativa** no lugar das UDFs escalares para throughput.
 3. **Cargas incrementais** (Auto Loader / merge Delta) em vez de overwrite.
 4. **Contrato versionado + evolução de schema** com registro e checagem de compat. em CI.
-5. **Expectativas nativas**: as regras mapeiam 1:1 para *expectations* de DLT/Spark
-   Declarative Pipelines — a Silver pode virar declarativa reusando os mesmos contratos.
+5. **Expectativas nativas**: já implementado como caminho paralelo (seção DLT acima);
+   o próximo passo é escolher um dos dois caminhos como oficial e aposentar o outro.

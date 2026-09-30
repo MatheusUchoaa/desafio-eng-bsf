@@ -183,14 +183,15 @@ class ContractEngine:
 
             for flag_name, failed in checks:
                 if r.on_fail == OnFail.nullify:
-                    df = df.withColumn(
-                        col.name,
-                        F.when(failed, F.lit(None)).otherwise(F.col(col.name)),
-                    )
+                    # flag antes de anular: `failed` exige o valor não-nulo
                     df = df.withColumn(
                         "_dq_flags",
                         F.when(failed, F.array_union("_dq_flags", F.array(F.lit(flag_name))))
                         .otherwise(F.col("_dq_flags")),
+                    )
+                    df = df.withColumn(
+                        col.name,
+                        F.when(failed, F.lit(None)).otherwise(F.col(col.name)),
                     )
                 elif r.on_fail == OnFail.warn:
                     df = df.withColumn(
@@ -220,19 +221,27 @@ class ContractEngine:
         return df.select(*select_cols)
 
     # ----- Orquestração de um dataset --------------------------------------
+    # O job chama process(); o caminho declarativo (dlt_pipeline.py) chama
+    # prepare() e refine() separados, para aplicar as regras hard como
+    # expectations entre as duas etapas. Nenhuma delas escreve nada.
     def process(self, contract: DataContract) -> PipelineResult:
-        df = self.read_source(contract)
+        return self.refine(contract, self.prepare(contract))
 
+    def prepare(self, contract: DataContract, df: DataFrame | None = None) -> DataFrame:
+        """Etapas 1-3: leitura (se `df` não vier), colunas faltantes, transform e cast."""
+        if df is None:
+            df = self.read_source(contract)
         # garante que todas as colunas do contrato existem (fonte pode não trazer alguma)
         for col in contract.columns:
             if col.name not in df.columns:
                 df = df.withColumn(col.name, F.lit(None).cast("string"))
-
         for col in contract.columns:
             df = self._apply_transform(df, col)
-        df = self._cast_types(df, contract)
+        return self._cast_types(df, contract)
 
-        valid, quarantine_hard = self._split_hard(df, contract)
+    def refine(self, contract: DataContract, typed: DataFrame) -> PipelineResult:
+        """Etapas 4-7 sobre o DataFrame tipado: hard, dedup, soft, derivadas."""
+        valid, quarantine_hard = self._split_hard(typed, contract)
         valid = self._dedup(valid, contract)
         valid, quarantine_soft = self._apply_soft_rules(valid, contract)
 
@@ -248,6 +257,52 @@ class ContractEngine:
 
         valid = self._derive_and_select(valid, contract)
         return PipelineResult(name=contract.name, valid=valid, quarantine=quarantine)
+
+
+# --- Regras do contrato como expectations (SQL) -----------------------------
+def hard_expectations(contract: DataContract) -> dict[str, str]:
+    """PK e nullable:false -> {nome: constraint SQL}, mesmos critérios de _split_hard."""
+    exps = {f"{Q_NULL_PK}_{pk}": f"`{pk}` IS NOT NULL" for pk in contract.primary_key}
+    for col in contract.columns:
+        if not col.nullable and col.name not in contract.primary_key:
+            exps[f"{Q_NOT_NULLABLE}_{col.name}"] = f"`{col.name}` IS NOT NULL"
+    return exps
+
+
+def soft_rule_flags(contract: DataContract) -> list[tuple[str, OnFail]]:
+    """Flags que _apply_soft_rules grava em _dq_flags (mesma convenção de nomes)."""
+    flags: list[tuple[str, OnFail]] = []
+    for col in contract.columns:
+        r = col.rules
+        names = []
+        if r.regex is not None:
+            names.append(f"regex:{col.name}")
+        if r.valid_cpf:
+            names.append(f"invalid_cpf:{col.name}")
+        if r.valid_email:
+            names.append(f"invalid_email:{col.name}")
+        if r.min is not None:
+            names.append(f"below_min:{col.name}")
+        if r.max is not None:
+            names.append(f"above_max:{col.name}")
+        if r.unique:
+            names.append(f"duplicate:{col.name}")
+        flags += [(n, r.on_fail) for n in names]
+    return flags
+
+
+def soft_expectations(contract: DataContract) -> dict[str, str]:
+    """Regras soft warn/nullify -> expectations sobre `_dq_flags`.
+
+    A checagem em si (UDFs de CPF/e-mail, regex, min/max, unique) continua na
+    engine; a expectation só lê a flag que ela gravou. Regras com
+    on_fail=quarantine não aparecem: essas linhas já saíram da Silver.
+    """
+    return {
+        flag.replace(":", "_"): f"NOT array_contains(_dq_flags, '{flag}')"
+        for flag, on_fail in soft_rule_flags(contract)
+        if on_fail != OnFail.quarantine
+    }
 
 
 # --- Escrita: Delta se disponível, senão Parquet ----------------------------

@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    silver_dlt:
+      name: "[${bundle.target}] payments-silver-contract-dlt"
+      # caminho declarativo paralelo ao job: mesmos contratos, schema separado
+      catalog: ${var.silver_catalog}
+      schema: ${var.silver_dlt_schema}
+      serverless: true
+      libraries:
+        - file:
+            path: ../src/silver_pipeline/dlt_pipeline.py
+      environment:
+        dependencies:
+          # a mesma wheel do job (engine + contratos embutidos)
+          - ../dist/*.whl
+      configuration:
+        silver_pipeline.bronze_volume: ${var.bronze_volume}

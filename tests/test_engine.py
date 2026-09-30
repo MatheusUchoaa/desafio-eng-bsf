@@ -76,6 +76,14 @@ def test_customers_no_customer_dropped(spark):
     assert any("invalid_email" in f for f in rows[1007]["_dq_flags"])
 
 
+def test_customers_invalid_cpf_flagged_and_nullified(spark):
+    # on_fail=nullify: a flag tem que ser gravada ANTES de o valor ser anulado
+    res = _process(spark, "customers.yaml")
+    rows = {r["customer_id"]: r for r in res.valid.collect()}
+    assert rows[1001]["customer_cpf"] is None
+    assert "invalid_cpf:customer_cpf" in rows[1001]["_dq_flags"]
+
+
 def test_fraud_score_scales(spark):
     res = _process(spark, "fraud_flags.yaml")
     rows = {r["transaction_id"]: r for r in res.valid.collect()}
