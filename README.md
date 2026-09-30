@@ -7,14 +7,13 @@ genérica lê o contrato de dados e aplica tipagem, validação, qualidade,
 deduplicação e particionamento automaticamente**. O time de Produto/Dev só
 preenche o YAML do contrato; nenhuma regra é escrita por fonte.
 
-```
-BRONZE (json/csv) ─▶ DATA CONTRACT (yaml) ─▶ ENGINE genérica ─▶ SILVER + QUARENTENA
-  dados brutos        Produto preenche        um só código        limpo / rejeitado
-```
+![Fluxo do projeto: Bronze → Data Contract → Engine → Silver + Quarentena; deploy da wheel via Job e Lakeflow Declarative Pipeline](docs/fluxo.png)
 
 Código e contratos são empacotados numa **wheel** e implantados via **Databricks
-Asset Bundle** (`python_wheel_task`) — o artefato declarativo (code + contratos)
-viaja versionado como uma unidade.
+Asset Bundle** por dois caminhos que usam a mesma wheel: um **Job** (`python_wheel_task`,
+engine imperativa) e um **Lakeflow Declarative Pipeline** (DLT), em que as regras do
+contrato viram expectations. O artefato (código + contratos) viaja versionado como
+uma unidade.
 
 ## Estrutura
 
@@ -22,18 +21,24 @@ viaja versionado como uma unidade.
 src/silver_pipeline/
   contract.py          modelo Pydantic do contrato (valida o contrato no load)
   quality.py           funções puras: CPF, e-mail, timestamp, score, valor
-  engine.py            lê contrato → transforma → tipa → quarentena → dedup → regras → escreve
-  pipeline.py          entry point `silver-pipeline` (main)
+  engine.py            prepare() (lê → transforma → tipa) + refine() (quarentena → dedup
+                       → regras → derivadas); write_output(); regras → expectations
+  pipeline.py          entry point `silver-pipeline` do job (main)
+  dlt_pipeline.py      caminho declarativo (Lakeflow/DLT) sobre os mesmos contratos
   contracts/*.yaml     os 3 contratos, EMBUTIDOS no pacote
 tests/                 test_quality (puros) + test_engine (Spark)
-resources/*.job.yml    job do Databricks Asset Bundle
+resources/
+  silver_pipeline.job.yml       job do Databricks Asset Bundle
+  silver_pipeline.pipeline.yml  pipeline declarativo (serverless)
 databricks.yml         bundle (variáveis, artifacts=wheel, targets)
 data/bronze/*          dados de exemplo (para rodar local e/ou subir a um Volume)
+docs/fluxo.png         diagrama do fluxo
 ```
 
 Fluxo da engine, por dataset: leitura (adapter por formato) → transformações
-declaradas → cast de tipo → **regras hard** (PK nula / `nullable:false` → quarentena)
-→ dedup pela chave → **regras soft** (política `on_fail`) → derivadas → escrita.
+declaradas → cast de tipo (`prepare`) → **regras hard** (PK nula / `nullable:false` →
+quarentena) → dedup pela chave → **regras soft** (política `on_fail`) → derivadas
+(`refine`) → escrita (`write_output`, só no job; no DLT quem materializa é o pipeline).
 
 ## Como rodar
 
@@ -58,7 +63,7 @@ databricks fs cp data/bronze/fraud_flags.json  dbfs:/Volumes/<catalog>/bronze/pa
 
 # 3. validar, implantar e rodar
 databricks bundle validate
-databricks bundle deploy -t dev          # builda a wheel e sobe o job
+databricks bundle deploy -t dev          # builda a wheel e sobe o job + o pipeline DLT
 databricks bundle run silver_pipeline -t dev
 ```
 
@@ -158,6 +163,15 @@ vai para `⟨tabela⟩_quarantine` com `_quarantine_reason`. Permite auditoria e
 **Política `on_fail` por regra soft** (`quarantine`/`nullify`/`warn`): o contrato decide
 o rigor sem tocar na engine.
 
+**Silver ≠ Gold.** A tabela enriquecida (transação × cliente × fraude) é Gold, não
+Silver, e ficou de fora de propósito: a Silver é a fonte conformada por entidade, e o
+join cruzado é responsabilidade da camada seguinte.
+
+**Dois caminhos, um contrato.** O job (engine imperativa) e o pipeline declarativo
+chamam as mesmas etapas da engine (`prepare`/`refine`) e produzem as mesmas linhas;
+no DLT, as regras do contrato também aparecem como expectations, com métricas de
+qualidade e linhagem no grafo. Publicam em schemas separados (`silver` e `silver_dlt`).
+
 **Decisões aterradas nos dados reais (explorados antes de codar):**
 
 - **CPF** — os 10 CPFs do arquivo **reprovam** o dígito verificador (dados fake). Por isso
@@ -179,30 +193,24 @@ o rigor sem tocar na engine.
 
 Timestamp malformado/multi-formato · valor não-numérico · PK nula · duplicata de PK ·
 e-mail duplicado e malformado · CPF sem máscara e com dígito inválido · score categórico ·
-campos nulos opcionais · fonte esparsa (fraud não cobre todas as transações → left join).
-Data futura (`2025-03-15`) é preservada e observável via `transaction_date_ref`
-(regra de range fica como próximo passo).
+campos nulos opcionais · fonte esparsa (fraud não cobre todas as transações; cada
+entidade vira sua própria Silver, sem join). Data futura (`2025-03-15`) é preservada e
+observável via `transaction_date_ref` (não há regra de range de datas no contrato).
 
 ## Testes
 
 `tests/test_quality.py` — 27 testes das transformações puras (parametrizados).
-`tests/test_engine.py` — integração rodando Spark sobre os dados reais, cobrindo os edge
-cases exigidos (pula se pyspark ausente) + detecção de destino. `ruff` no lint.
+`tests/test_engine.py` — 5 testes de integração rodando Spark sobre os dados reais: os
+edge cases exigidos, a flag `invalid_cpf` gravada junto com o CPF anulado (`nullify`) e a
+detecção de destino (pulam se pyspark ausente). Total: 32. `ruff` no lint.
 
 ## Diferenciais incluídos
 
-- **CI/CD** — `.github/workflows/ci.yml`: lint (ruff) + pytest + **build da wheel** a cada PR.
+- **CI/CD** — `.github/workflows/ci.yml`: lint (ruff) + pytest + **build da wheel** a cada
+  push na `main` e a cada PR.
 - **Databricks Asset Bundle** — `databricks.yml` + `resources/silver_pipeline.job.yml`:
-  wheel como artifact, `python_wheel_task`, cluster UC, schedule; deploy reproduzível.
-- **Spark Declarative Pipeline (DLT)** — `resources/silver_pipeline.pipeline.yml` +
-  `src/silver_pipeline/dlt_pipeline.py`: os mesmos contratos viram expectations.
-
-## Próximos passos para escala
-
-1. **Silver → Gold**: a tabela enriquecida (transação × cliente × fraude) é Gold, não
-   Silver — deixada fora de propósito. Reusa a mesma engine com um contrato Gold.
-2. **`pandas_udf`/expressão nativa** no lugar das UDFs escalares para throughput.
-3. **Cargas incrementais** (Auto Loader / merge Delta) em vez de overwrite.
-4. **Contrato versionado + evolução de schema** com registro e checagem de compat. em CI.
-5. **Expectativas nativas**: já implementado como caminho paralelo (seção DLT acima);
-   o próximo passo é escolher um dos dois caminhos como oficial e aposentar o outro.
+  wheel como artifact, `python_wheel_task`, cluster UC, schedule (pausado); deploy
+  reproduzível.
+- **Spark Declarative Pipeline (Lakeflow/DLT)** — `resources/silver_pipeline.pipeline.yml`
+  + `src/silver_pipeline/dlt_pipeline.py`: pipeline serverless com a mesma wheel; os
+  mesmos contratos viram expectations.
